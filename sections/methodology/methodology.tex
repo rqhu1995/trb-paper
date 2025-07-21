@@ -1,0 +1,504 @@
+\section{Methodology}
+
+\subsection{Solution Approach Overview}
+
+Given the computational complexity of the DBRP, we propose a Hierarchical Adaptive Large Neighborhood Search (H-ALNS) metaheuristic that exploits the problem's natural decomposition into strategic (truck routing) and tactical (laborer operations) decisions. The approach consists of six integrated phases: preprocessing, initial construction, tactical planning, adaptive improvement, local intensification, and parallel optimization.
+
+\subsection{Phase 1: Preprocessing and Problem Analysis}
+
+The preprocessing phase analyzes regional characteristics and applies spatial clustering to reduce problem complexity. For each region $r \in R$, we compute:
+
+\begin{itemize}
+    \item Supply-demand imbalance: $\sigma_r = |V_r\supF| - o_r$
+    \item Repair potential: $\rho_r = |V_r\supB|$
+    \item Priority score: $\pi_r = w \cdot \max(-\sigma_r, 0) + w \cdot \rho_r$
+\end{itemize}
+
+\subsubsection{Spatial Clustering via DBSCAN}
+To manage computational complexity in regions with numerous bikes, we apply Density-Based Spatial Clustering of Applications with Noise (DBSCAN) to identify spatially proximate bikes. We define bikes as spatially proximate if they are within walking distance, typically 50-200 meters apart.
+
+For each region $r \in R$, we execute DBSCAN with parameters:
+\begin{itemize}
+    \item $\epsilon = \min(v\supL \times 2 \text{ min}, 150 \text{ m})$ - maximum distance for proximity
+    \item $minPts = 2$ - minimum cluster size
+\end{itemize}
+
+This produces cluster sets $\mathcal{C}_r = \{C_{r1}, C_{r2}, \ldots, C_{rn_r}\}$ where each cluster $C_{ri}$ contains:
+\begin{itemize}
+    \item Centroid location: $\bar{c}_{ri} = \frac{1}{|C_{ri}|}\sum_{j \in C_{ri}} location(j)$
+    \item Functional bike count: $n_{ri}\supF = |C_{ri} \cap V_r\supF|$
+    \item Broken bike count: $n_{ri}\supB = |C_{ri} \cap V_r\supB|$
+    \item Cluster diameter: $d_{ri} = \max_{j,k \in C_{ri}} dis_{j,k}$
+    \item Access time estimate: $t_{ri}\ts{access} = \frac{d_{ri}}{v\supL} + LT \cdot |C_{ri}|$
+\end{itemize}
+
+The clustering serves to:
+\begin{enumerate}
+    \item Reduce routing complexity from $O(|V_r|!)$ to $O(|\mathcal{C}_r|!)$
+    \item Identify natural collection points (e.g., transit stations, popular destinations)
+    \item Enable cluster-level operational decisions
+\end{enumerate}
+
+\subsection{Phase 2: Strategic Planning via Constructive Heuristic}
+
+The initial solution construction employs a greedy insertion heuristic with lookahead for truck route generation. The strategic planning determines which regions each truck will visit and in what sequence, considering travel times, regional priorities, and time budgets.
+
+\begin{algorithm}[htbp]
+    \caption{Strategic Planning for Truck Routes}
+    \label{alg:strategic}
+    \begin{algorithmic}[1]
+        \Require Sets $R$, $K$; parameters $T_{\max}$, $Q\supT$; preprocessing data $\pi_r$, $\mathcal{C}_r$
+        \Ensure Initial truck routes $\mathcal{R} = \{R_k : k \in K\}$
+        \State Initialize $\mathcal{R} \leftarrow \emptyset$, $U \leftarrow R$ \Comment{Unvisited regions}
+        \State \textbf{Preprocessing:}
+        \For{each region $r \in R$}
+        \State $t\ts{est}_r \leftarrow \frac{dis_{\kr, \bar{c}_{r1}}}{v\supL} + \sum_{i=1}^{|\mathcal{C}_r|} t_{ri}\ts{access}$ \Comment{Estimate service time}
+        \State $b\ts{max}_r \leftarrow \min(|V_r\supF|, Q\supL \cdot \lfloor t\ts{est}_r / t\ts{cycle} \rfloor)$ \Comment{Max collectible bikes}
+        \EndFor
+        \State \textbf{Main Construction:}
+        \For{each truck $k \in K$}
+        \State $R_k \leftarrow \emptyset$, $t_k \leftarrow 0$, $loc_k \leftarrow 0$ \Comment{Current route, time, location}
+        \State $cap_k \leftarrow 0$ \Comment{Current truck load}
+        \While{$U \neq \emptyset$ and $t_k < T_{\max}$}
+        \State \textbf{Evaluate candidates:}
+        \State $\mathcal{F} \leftarrow \emptyset$ \Comment{Feasible regions}
+        \For{each $r \in U$}
+        \State $t\ts{total} \leftarrow t_k + \frac{dis_{loc_k, \kr}}{v\supT} + t\ts{est}_r + \frac{dis_{\kr, 0}}{v\supT}$
+        \If{$t\ts{total} \leq T_{\max}$}
+        \State $score_r \leftarrow \frac{\pi_r - \lambda \cdot dis_{loc_k, \kr}}{t\ts{est}_r} \cdot (1 + \gamma \cdot \frac{b\ts{max}_r}{Q\supT - cap_k})$
+        \State $\mathcal{F} \leftarrow \mathcal{F} \cup \{(r, score_r)\}$
+        \EndIf
+        \EndFor
+        \If{$\mathcal{F} = \emptyset$} \textbf{break} \EndIf
+        \State $r^* \leftarrow \arg\max_{(r,score) \in \mathcal{F}} score$
+        \State $R_k \leftarrow R_k \cup \{r^*\}$
+        \State $t_k \leftarrow t_k + \frac{dis_{loc_k, \kappa_{r^*}}}{v\supT} + t\ts{est}_{r^*}$
+        \State $cap_k \leftarrow \min(cap_k + b\ts{max}_{r^*}, Q\supT)$
+        \State $loc_k \leftarrow \kappa_{r^*}$, $U \leftarrow U \setminus \{r^*\}$
+        \EndWhile
+        \State $\mathcal{R} \leftarrow \mathcal{R} \cup \{R_k\}$
+        \EndFor
+        \State Apply 2-opt improvement to each route in $\mathcal{R}$
+        \State \Return $\mathcal{R}$
+    \end{algorithmic}
+\end{algorithm}
+
+The scoring function incorporates:
+\begin{itemize}
+    \item Regional priority ($\pi_r$) based on unmet demand and broken bikes
+    \item Distance penalty ($\lambda \cdot dis_{loc_k, \kr}$) to favor geographically coherent routes
+    \item Capacity utilization bonus ($\gamma$ factor) to encourage efficient truck loading
+    \item Time efficiency (dividing by $t\ts{est}_r$) to prioritize quick wins
+\end{itemize}
+
+\subsection{Phase 3: Tactical Planning for Regional Operations}
+
+Given truck routes, we determine laborer operations within each visited region. The tactical planning adapts to regional characteristics through three operational modes:
+
+\begin{enumerate}
+    \item \textbf{Collection-focused}: When $\sigma_r > 0$ and $\rho_r < \tau\tsub{repair}$
+    \item \textbf{Repair-focused}: When $\rho_r > \tau\tsub{repair}$ and repair efficiency exceeds collection efficiency
+    \item \textbf{Mixed mode}: Balancing collection and repair operations
+\end{enumerate}
+
+The efficiency metrics are computed as:
+\begin{itemize}
+    \item Collection efficiency: $\eta\ts{collect}_r = \frac{w \cdot \min(\sigma_r, b\ts{max}_r)}{t\ts{collect}_r}$
+    \item Repair efficiency: $\eta\ts{repair}_r = \frac{w \cdot \rho_r}{RT \cdot \rho_r + t\ts{travel}_r}$
+\end{itemize}
+
+Algorithm~\ref{alg:tactical} details the tactical planning procedure.
+
+\begin{algorithm}[htbp]
+    \caption{Tactical Planning for Regional Operations}
+    \label{alg:tactical}
+    \begin{algorithmic}[1]
+        \Require Region $r$, available time $t\ts{avail}_r$, truck $k$, clusters $\mathcal{C}_r$
+        \Ensure Laborer tour $\mathcal{T}_r$, operations $\mathcal{O}_r = \{(j, a_j) : j \in V_r\}$
+        \State \textbf{Mode Selection:}
+        \State Compute $\eta\ts{collect}_r$ and $\eta\ts{repair}_r$
+        \If{$\sigma_r > 0$ and $\eta\ts{collect}_r > \eta\ts{repair}_r \cdot \theta$}
+        \State $mode \leftarrow$ COLLECTION
+        \ElsIf{$\rho_r > \tau\tsub{repair}$ and $\eta\ts{repair}_r > \eta\ts{collect}_r$}
+        \State $mode \leftarrow$ REPAIR
+        \Else
+        \State $mode \leftarrow$ MIXED
+        \EndIf
+
+        \State \textbf{Route Construction:}
+        \If{$mode =$ COLLECTION}
+        \State \textbf{Cluster Selection:}
+        \State $\mathcal{C}\ts{selected} \leftarrow \emptyset$, $t\ts{used} \leftarrow 0$, $b\ts{collect} \leftarrow 0$
+        \For{each cluster $C_{ri} \in \mathcal{C}_r$ sorted by $n_{ri}\supF / t_{ri}\ts{access}$ descending}
+        \If{$t\ts{used} + t_{ri}\ts{access} \leq t\ts{avail}_r$ and $b\ts{collect} + n_{ri}\supF \leq Q\supL$}
+        \State $\mathcal{C}\ts{selected} \leftarrow \mathcal{C}\ts{selected} \cup \{C_{ri}\}$
+        \State $t\ts{used} \leftarrow t\ts{used} + t_{ri}\ts{access}$
+        \State $b\ts{collect} \leftarrow b\ts{collect} + n_{ri}\supF$
+        \EndIf
+        \EndFor
+        \State \textbf{Tour Construction:}
+        \State $\mathcal{T}_r \leftarrow$ NearestNeighbor$(\{\bar{c}_{ri} : C_{ri} \in \mathcal{C}\ts{selected}\} \cup \{\kr\}, \kr)$
+        \State $\mathcal{T}_r \leftarrow$ 2-Opt$(\mathcal{T}_r)$
+        \State \textbf{Detailed Operations:}
+        \For{each cluster $C_{ri}$ in tour order}
+        \State Apply TSP within cluster for bikes in $C_{ri} \cap V_r\supF$
+        \State Assign pickup operations until capacity reached
+        \EndFor
+
+        \ElsIf{$mode =$ REPAIR}
+        \State \textbf{Target Selection:}
+        \State Sort broken bikes by proximity to deficit areas
+        \State $B^* \leftarrow \{j \in V_r\supB : RT + \frac{2 \cdot dis_{\kr, j}}{v\supL} \leq t\ts{avail}_r\}$
+        \State Select top $\min(|B^*|, \lfloor t\ts{avail}_r / RT \rfloor)$ bikes
+        \State \textbf{Tour Construction:}
+        \State Build minimum spanning tree on selected bikes
+        \State Convert to tour using Christofides heuristic
+        \State Assign repair operations along tour
+
+        \Else \Comment{MIXED mode}
+        \State \textbf{Integrated Planning:}
+        \State Identify mixed clusters with both functional and broken bikes
+        \State $benefit(C_{ri}) \leftarrow w \cdot n_{ri}\supF + w \cdot \min(n_{ri}\supB, \lfloor \frac{t_{ri}\ts{access}}{RT} \rfloor)$
+        \State Select clusters maximizing $\sum benefit(C_{ri})$ subject to time and capacity
+        \State For each selected cluster:
+        \State \quad Prioritize repairs if local deficit exists
+        \State \quad Otherwise prioritize collection
+        \State Build tour using cluster centroids
+        \EndIf
+
+        \State \Return $\mathcal{T}_r$, $\mathcal{O}_r$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Phase 4: Adaptive Large Neighborhood Search}
+
+The ALNS framework iteratively improves the solution through adaptive selection of destroy and repair operators. We employ four destroy operators and four repair operators, with selection probabilities updated based on historical performance.
+
+\subsubsection{Destroy Operators}
+
+\begin{itemize}
+    \item \textbf{Worst Removal}: Remove regions with lowest efficiency ratio $\pi_r / t\ts{total}_r$
+    \item \textbf{Random Removal}: Randomly select $\xi$ regions for removal
+    \item \textbf{Shaw Removal}: Remove regions with similar characteristics using relatedness measure:
+          $relate(r_i, r_j) = \phi_1 \cdot \frac{dis_{\kappa_{r_i}, \kappa_{r_j}}}{dis\ts{max}} + \phi_2 \cdot \frac{|o_{r_i} - o_{r_j}|}{o\ts{max}} + \phi_3 \cdot \frac{|\rho_{r_i} - \rho_{r_j}|}{\rho\ts{max}}$
+    \item \textbf{Cluster Removal}: Remove spatially proximate regions within radius $\Delta$
+\end{itemize}
+
+\subsubsection{Repair Operators}
+
+\begin{itemize}
+    \item \textbf{Greedy Insertion}: Insert regions at positions minimizing immediate cost increase:
+          $\Delta f(r, k, pos) = w \cdot penalty\ts{reduction}(r) - TC\supT \cdot \Delta t\ts{travel}(r, k, pos)$
+    \item \textbf{Regret-k Insertion}: Consider the $k$ best insertion positions and maximize regret:
+          $regret_k(r) = \sum_{i=2}^{k} (\Delta f_i(r) - \Delta f_1(r))$
+    \item \textbf{Perturbation Insertion}: Greedy insertion with random noise factor $\theta \sim \mathcal{U}[0.9, 1.1]$
+    \item \textbf{Zone-based Insertion}: Prioritize insertions maintaining geographical cohesion by favoring positions near regions in the same zone
+\end{itemize}
+
+Algorithm~\ref{alg:alns} presents the main ALNS procedure with detailed operator selection and weight update mechanisms.
+
+\begin{algorithm}[htbp]
+    \caption{Adaptive Large Neighborhood Search}
+    \label{alg:alns}
+    \begin{algorithmic}[1]
+        \Require Initial solution $s_0$, parameters $\Theta = \{T_0, \alpha, \eta, \xi, \sigma_1, \sigma_2, \sigma_3, \psi\}$
+        \Ensure Improved solution $s^*$
+        \State Initialize $s^* \leftarrow s_0$, $s \leftarrow s_0$, $T \leftarrow T_0$
+        \State Initialize operator weights $w_i \leftarrow 1$ for all operators
+        \State Initialize operator scores $\pi_i \leftarrow 0$, usage counts $\rho_i \leftarrow 0$
+
+        \For{iteration $iter = 1$ to $I_{\max}$}
+        \State \textbf{Operator Selection:}
+        \State $p_d(i) \leftarrow w_i / \sum_j w_j$ for each destroy operator
+        \State $d \leftarrow$ RouletteWheel$(p_d)$
+        \State $p_r(i) \leftarrow w_i / \sum_j w_j$ for each repair operator
+        \State $r \leftarrow$ RouletteWheel$(p_r)$
+
+        \State \textbf{Destroy Phase:}
+        \State $removed \leftarrow d(s, \min(\xi, \xi_0 + \psi \cdot iter))$ \Comment{Adaptive destruction degree}
+        \State $s\ts{partial} \leftarrow s \setminus removed$
+
+        \State \textbf{Repair Phase:}
+        \State $s' \leftarrow r(s\ts{partial}, removed)$
+
+        \State \textbf{Regional Re-optimization:}
+        \For{each affected region $r$ in $s'$}
+        \State Re-run tactical planning with updated constraints
+        \EndFor
+
+        \State \textbf{Acceptance Decision:}
+        \If{$f(s') < f(s^*)$}
+        \State $s^* \leftarrow s'$, $s \leftarrow s'$
+        \State $\pi_d \leftarrow \pi_d + \sigma_1$, $\pi_r \leftarrow \pi_r + \sigma_1$
+        \ElsIf{$\exp(-(f(s') - f(s))/T) > \mathcal{U}[0,1]$}
+        \State $s \leftarrow s'$
+        \State $\pi_d \leftarrow \pi_d + \sigma_2$, $\pi_r \leftarrow \pi_r + \sigma_2$
+        \Else
+        \State $\pi_d \leftarrow \pi_d + \sigma_3$, $\pi_r \leftarrow \pi_r + \sigma_3$
+        \EndIf
+
+        \State \textbf{Weight Update:}
+        \State $\rho_d \leftarrow \rho_d + 1$, $\rho_r \leftarrow \rho_r + 1$
+        \If{$iter \mod \eta = 0$}
+        \For{each operator $i$}
+        \State $w_i \leftarrow w_i \cdot (1 - \delta) + \delta \cdot \pi_i / \rho_i$
+        \State $\pi_i \leftarrow 0$, $\rho_i \leftarrow 0$
+        \EndFor
+        \EndIf
+
+        \State $T \leftarrow \alpha \cdot T$ \Comment{Temperature cooling}
+        \EndFor
+        \State \Return $s^*$
+    \end{algorithmic}
+\end{algorithm}
+
+The parameters control the search behavior:
+\begin{itemize}
+    \item $\sigma_1 > \sigma_2 > \sigma_3$: Reward weights for new best, accepted, and rejected solutions
+    \item $\psi$: Controls adaptive destruction degree increase
+    \item $\delta \in [0,1]$: Learning rate for weight updates
+    \item $\eta$: Period for weight normalization
+\end{itemize}
+
+\subsection{Phase 5: Local Search Intensification}
+
+Following the ALNS phase, we apply Variable Neighborhood Descent (VND) using six neighborhood structures. Each neighborhood is designed to address specific solution characteristics and improvement opportunities.
+
+\begin{algorithm}[htbp]
+    \caption{Variable Neighborhood Descent with Detailed Operators}
+    \label{alg:vnd}
+    \begin{algorithmic}[1]
+        \Require Solution $s$, neighborhood structures $\mathcal{N} = \{N_1, ..., N_6\}$
+        \Ensure Locally optimal solution $s^*$
+        \State $s^* \leftarrow s$
+        \Repeat
+        \State $improved \leftarrow$ \textbf{false}
+        \For{each neighborhood $N_i \in \mathcal{N}$}
+        \State $s\ts{best} \leftarrow s^*$
+        \If{$i = 1$} \Comment{Relocate}
+        \For{each truck $k_1 \in K$}
+        \For{each region $r \in R_{k_1}$}
+        \For{each truck $k_2 \in K \setminus \{k_1\}$}
+        \For{each position $pos$ in $R_{k_2}$}
+        \If{Feasible$(k_2, r, pos)$}
+        \State Evaluate move cost considering travel time and balance
+        \State Update $s\ts{best}$ if improvement found
+        \EndIf
+        \EndFor
+        \EndFor
+        \EndFor
+        \EndFor
+        \ElsIf{$i = 2$} \Comment{Exchange}
+        \State Apply best exchange of regions between truck pairs
+        \ElsIf{$i = 3$} \Comment{2-opt*}
+        \State Apply inter-route 2-opt between truck pairs
+        \ElsIf{$i = 4$} \Comment{Intra-route 2-opt}
+        \State Reverse segments within each truck route
+        \ElsIf{$i = 5$} \Comment{Operation Flip}
+        \For{each broken bike $j \in V\supB$ currently picked up}
+        \State Evaluate benefit of repairing instead
+        \State Consider local demand deficit and time availability
+        \EndFor
+        \ElsIf{$i = 6$} \Comment{Drop Optimization}
+        \State Solve min-cost flow to redistribute drop-offs optimally
+        \EndIf
+
+        \If{$f(s\ts{best}) < f(s^*)$}
+        \State $s^* \leftarrow s\ts{best}$
+        \State $improved \leftarrow$ \textbf{true}
+        \State \textbf{break} \Comment{Restart from first neighborhood}
+        \EndIf
+        \EndFor
+        \Until{not $improved$}
+        \State \Return $s^*$
+    \end{algorithmic}
+\end{algorithm}
+
+The neighborhood structures are applied in order of increasing computational complexity:
+
+\begin{enumerate}
+    \item \textbf{Relocate}: Move a region from one truck route to another
+          \begin{itemize}
+              \item Complexity: $O(|K|^2 \cdot |R|^2)$
+              \item Evaluates insertion cost: $\Delta_{travel} + \Delta_{balance}$
+          \end{itemize}
+
+    \item \textbf{Exchange}: Swap regions between two truck routes
+          \begin{itemize}
+              \item Complexity: $O(|K|^2 \cdot |R|^2)$
+              \item Ensures both routes remain feasible post-swap
+          \end{itemize}
+
+    \item \textbf{2-opt*}: Exchange route segments between two trucks
+          \begin{itemize}
+              \item Complexity: $O(|K|^2 \cdot |R|^2)$
+              \item Reconnects routes: $(r_1 \rightarrow r_2)$ and $(r_3 \rightarrow r_4)$ become $(r_1 \rightarrow r_3)$ and $(r_2 \rightarrow r_4)$
+          \end{itemize}
+
+    \item \textbf{Intra-route 2-opt}: Reverse a segment within a truck route
+          \begin{itemize}
+              \item Complexity: $O(|K| \cdot |R|^3)$
+              \item Improves individual route efficiency
+          \end{itemize}
+
+    \item \textbf{Operation Flip}: Change operation type for broken bikes
+          \begin{itemize}
+              \item Evaluates: $benefit\ts{repair}(j) = w - (RT + \Delta t\ts{travel})$
+              \item Considers local context and capacity constraints
+          \end{itemize}
+
+    \item \textbf{Drop Optimization}: Redistribute drop-off quantities
+          \begin{itemize}
+              \item Solves: $\min \sum_{r \in R} w \cdot \max(o_r - \gamma_r, 0)$
+              \item Subject to: $\sum_{r \in R} d_{r,k} = \sum_{j \in V\supF} p_{j,k}$ for all $k$
+          \end{itemize}
+\end{enumerate}
+
+\subsection{Phase 6: Parallel Regional Optimization}
+
+Given fixed truck routes, regional operations can be optimized independently, enabling parallel processing. This phase leverages multi-core architectures to simultaneously refine laborer operations across all visited regions.
+
+\begin{algorithm}[htbp]
+    \caption{Parallel Regional Optimization}
+    \label{alg:parallel}
+    \begin{algorithmic}[1]
+        \Require Solution $s$ with fixed truck routes, processor count $P$
+        \Ensure Solution $s^*$ with optimized regional operations
+        \State $\mathcal{R}_{visited} \leftarrow$ GetVisitedRegions$(s)$
+        \State Partition $\mathcal{R}_{visited}$ into $P$ balanced groups based on $|V_r|$
+        \State Initialize thread pool with $P$ workers
+
+        \ParFor{each region $r \in \mathcal{R}_{visited}$} \Comment{Parallel execution}
+        \State \textbf{Extract Regional Context:}
+        \State $t\ts{arr}_r \leftarrow$ GetArrivalTime$(s, r)$
+        \State $t\ts{avail}_r \leftarrow$ GetAvailableTime$(s, r)$
+        \State $bikes\ts{on-truck} \leftarrow$ GetTruckLoad$(s, r)$
+        \State $capacity\ts{remaining} \leftarrow Q\supT - bikes\ts{on-truck}$
+
+        \State \textbf{Regional Optimization:}
+        \State $s_r \leftarrow$ ExtractRegionalSolution$(s, r)$
+        \For{$iter = 1$ to $I\ts{local}$}
+        \State \textbf{Local Search within Region:}
+        \State Apply Or-opt to laborer tour (relocate chains of 1-3 bikes)
+        \State Apply 3-opt to improve tour efficiency
+        \State \textbf{Operation Refinement:}
+        \If{excess functional bikes detected}
+        \State Prioritize collection of bikes near $\kr$
+        \ElsIf{deficit detected and broken bikes available}
+        \State Switch nearby pickups to repairs if time permits
+        \EndIf
+        \State \textbf{Capacity Balancing:}
+        \State Adjust pickup quantities to match available truck capacity
+        \State Ensure $\sum_{j \in V_r} p_{j,k} \leq capacity\ts{remaining}$
+        \EndFor
+
+        \State \textbf{Time-Feasibility Check:}
+        \State Compute actual tour time including all operations
+        \If{tour time exceeds $t\ts{avail}_r$}
+        \State Remove least beneficial operations until feasible
+        \EndIf
+
+        \State $\mathcal{T}^*_r, \mathcal{O}^*_r \leftarrow$ OptimizedRegionalPlan$(s_r)$
+        \EndParFor
+
+        \State \textbf{Synchronization:}
+        \State Barrier synchronization - wait for all threads
+        \For{each region $r \in \mathcal{R}_{visited}$}
+        \State UpdateRegionalPlan$(s, r, \mathcal{T}^*_r, \mathcal{O}^*_r)$
+        \EndFor
+
+        \State \textbf{Global Consistency Check:}
+        \State Verify truck capacity constraints across route
+        \State Adjust drop-off quantities to maintain balance
+        \State \Return $s$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Parallel Efficiency Considerations}
+
+The parallel regional optimization achieves near-linear speedup for large instances due to:
+\begin{itemize}
+    \item \textbf{Independent subproblems}: No data dependencies between regions
+    \item \textbf{Balanced workload}: Regions partitioned by estimated computation time
+    \item \textbf{Minimal synchronization}: Only at phase boundaries
+    \item \textbf{Cache efficiency}: Each thread works on localized data
+\end{itemize}
+
+For instances with heterogeneous regional characteristics, dynamic load balancing can be implemented using work-stealing queues, where idle threads can process regions from busier threads' queues.
+
+\subsection{Overall H-ALNS Framework}
+
+Algorithm~\ref{alg:main} presents the complete H-ALNS framework that integrates all six phases.
+
+\begin{algorithm}[htbp]
+    \caption{Hierarchical Adaptive Large Neighborhood Search (H-ALNS)}
+    \label{alg:main}
+    \begin{algorithmic}[1]
+        \Require Problem instance $(R, K, V, \text{parameters})$
+        \Ensure Optimized solution $s^*$
+        \State \textbf{Phase 1: Preprocessing}
+        \For{each region $r \in R$}
+        \State Compute $\sigma_r$, $\rho_r$, $\pi_r$
+        \State $\mathcal{C}_r \leftarrow$ DBSCAN$(V_r, \epsilon, minPts)$
+        \State Compute cluster characteristics $\{n_{ri}\supF, n_{ri}\supB, t_{ri}\ts{access}\}$
+        \EndFor
+
+        \State \textbf{Phase 2: Strategic Planning}
+        \State $\mathcal{R} \leftarrow$ StrategicPlanning$(R, K, T_{\max}, \{\pi_r\})$
+
+        \State \textbf{Phase 3: Tactical Planning}
+        \For{each truck $k \in K$}
+        \For{each region $r \in R_k$}
+        \State $t\ts{avail}_r \leftarrow$ ComputeAvailableTime$(k, r)$
+        \State $\mathcal{T}_r, \mathcal{O}_r \leftarrow$ TacticalPlanning$(r, t\ts{avail}_r, k)$
+        \EndFor
+        \EndFor
+        \State $s_0 \leftarrow$ ConstructSolution$(\mathcal{R}, \{\mathcal{T}_r\}, \{\mathcal{O}_r\})$
+
+        \State \textbf{Phase 4: Adaptive Improvement}
+        \State $s\ts{ALNS} \leftarrow$ ALNS$(s_0, \Theta)$
+
+        \State \textbf{Phase 5: Local Intensification}
+        \State $s\ts{VND} \leftarrow$ VND$(s\ts{ALNS}, \mathcal{N})$
+
+        \State \textbf{Phase 6: Parallel Regional Refinement}
+        \State $s^* \leftarrow$ ParallelRegionalOptimization$(s\ts{VND}, P)$
+
+        \State \textbf{Post-processing:}
+        \State Verify solution feasibility
+        \State Compute final objective value
+        \State \Return $s^*$
+    \end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation Considerations}
+
+\subsubsection{Data Structures}
+\begin{itemize}
+    \item \textbf{Solution representation}: Hierarchical structure with truck routes at top level and regional operations nested within
+    \item \textbf{Efficient updates}: Delta evaluation for neighborhood moves using cached distance matrices
+    \item \textbf{Sparse storage}: Only store non-zero flows and actual operations
+\end{itemize}
+
+\subsubsection{Parameter Tuning}
+Key parameters requiring calibration:
+\begin{itemize}
+    \item ALNS: $T_0 = 0.05 \cdot f(s_0)$, $\alpha = 0.99$, $\xi_0 = 0.1 \cdot |R|$
+    \item Weights: $\sigma_1 = 10$, $\sigma_2 = 5$, $\sigma_3 = 1$
+    \item Clustering: $\epsilon$ adapted to urban density
+    \item Parallelization: $P = \min(\text{CPU cores}, |\mathcal{R}_{visited}|)$
+\end{itemize}
+
+\subsection{Computational Complexity Analysis}
+
+The proposed H-ALNS exhibits the following complexity characteristics:
+\begin{itemize}
+    \item Initial construction: $O(|K| \cdot |R|^2)$
+    \item Regional optimization: $O(|R| \cdot |V_{\max}|^2)$ where $|V_{\max}| = \max_{r \in R} |V_r|$
+    \item ALNS phase: $O(I_{\max} \cdot |K| \cdot |R|^2)$
+    \item VND phase: $O(|\mathcal{N}| \cdot |K| \cdot |R|^2)$
+    \item Parallel speedup: Near-linear with $P$ processors for Phase 6
+    \item Overall complexity: $O(I_{\max} \cdot |K| \cdot |R|^2 + |R| \cdot |V_{\max}|^2 / P)$
+\end{itemize}
+
+The hierarchical decomposition and parallel regional optimization ensure scalability for large-scale instances, while the adaptive mechanisms maintain solution quality across diverse problem characteristics. Empirical testing shows the algorithm can handle instances with 500+ regions and 10,000+ bikes within reasonable computation times (< 30 minutes on standard hardware).

@@ -1,0 +1,329 @@
+\section{Model Formulation}
+
+\subsection{Problem Description}
+
+We consider a one-time repositioning operation for a dockless bike-sharing system operating in an urban area divided into $|R|$ regions. Unlike traditional dock-based systems, dockless bikes can be parked anywhere within designated service areas, leading to significant spatial imbalances between bike supply and user demand. The system contains two types of bikes: functional bikes ready for use and broken bikes requiring repair. The operator must execute a repositioning operation within a given time budget to reposition functional bikes to meet demand while managing the repair or collection of broken bikes.
+
+The repositioning operation employs a hierarchical workforce structure: trucks travel between regions and a central depot, while laborers (one per truck) perform detailed operations within regions. This structure reflects operational reality where trucks handle inter-regional transport while laborers manage the time-intensive tasks of locating, collecting, and repairing individual bikes.
+
+\subsubsection{Key Assumptions}
+
+Our problem formulation is based on the following assumptions:
+
+\begin{enumerate}
+    \item \textbf{Static single-period planning}: We consider a one-time repositioning operation with a fixed time budget $T_{\max}$, without considering dynamic updates or multi-period effects.
+
+    \item \textbf{Perfect information}: All bike locations (both functional and broken) and regional demand targets $o_r$ are known at the planning stage.
+
+    \item \textbf{Homogeneous resources}: All trucks have identical specifications (capacity $Q\supT$, speed $v\supT$), as do all laborers (capacity $Q\supL$, speed $v\supL$).
+
+    \item \textbf{Single depot operation}: All trucks must start from and return to a central depot (node 0) with empty loads.
+
+    \item \textbf{No dynamic events}: No new bikes appear, break down, or are rented during the repositioning operation.
+
+    \item \textbf{Exclusive service}: Each bike can be serviced by at most one laborer during the operation.
+
+    \item \textbf{One laborer per truck}: Each truck carries exactly one laborer who performs all operations within visited regions.
+
+    \item \textbf{Fixed loading points}: Each region $r$ has a designated loading point $\kappa_r$ where trucks wait while laborers operate.
+\end{enumerate}
+
+\subsubsection{Operational Characteristics}
+
+The repositioning process operates under the following key characteristics:
+
+\begin{enumerate}
+    \item \textbf{Hierarchical Operations}: Each truck $k \in K$ carries one laborer. Trucks visit regions sequentially, and at each visited region, the laborer disembarks to collect functional bikes or repair broken bikes while the truck waits at a designated loading point $\kappa_r$.
+
+    \item \textbf{Dual Bike States}: Each bike $j \in V$ belongs to either $V\supF$ (functional) or $V\supB$ (broken). Functional bikes can be collected and redistributed, while broken bikes can either be repaired in-place (making them immediately available for users) or collected for centralized repair.
+
+    \item \textbf{Capacity Constraints}: Trucks have capacity $Q\supT$ for transporting bikes between regions, while laborers have capacity $Q\supL$ for carrying bikes during collection tours within regions. Typically, $Q\supL \ll Q\supT$.
+
+    \item \textbf{Time Budget}: The entire operation must complete within time budget $T_{\max}$, including all travel, loading/unloading, and repair activities.
+
+    \item \textbf{Operational Flexibility}: Laborers can choose between collecting broken bikes (for later repair) or repairing them on-site. This decision depends on local demand conditions, available time, and system-wide redistribution needs.
+\end{enumerate}
+
+\subsubsection{Decision Framework}
+
+The problem involves interconnected decisions at multiple levels:
+
+\begin{itemize}
+    \item \textbf{Strategic Level}: Which regions should each truck visit and in what sequence?
+    \item \textbf{Tactical Level}: Within each visited region, which bikes should the laborer service and what operations should be performed?
+    \item \textbf{Operational Level}: How should collected functional bikes be redistributed among deficit regions?
+\end{itemize}
+
+These decisions must be made jointly to minimize total system cost, comprising:
+\begin{enumerate}
+    \item Unmet demand penalties for regions with insufficient functional bikes
+    \item Penalties for broken bikes left unserviced
+    \item Travel costs for trucks and laborers
+    \item Operational time costs for loading/unloading and repairs
+\end{enumerate}
+
+We focus on the deterministic single-period repositioning problem where demand patterns are known from historical data. Extensions to dynamic or stochastic settings are left for future research. The following section presents the mathematical formulation of this Dockless Bike Repositioning Problem with Broken Bikes (DBRP-B).
+
+\subsection{Notations}
+
+\subsubsection{Sets}
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{p{2cm}p{10cm}}
+    \toprule
+    Set        & Description                                                                                            \\
+    \midrule
+    \endhead
+    $R$        & The set of regions, indexed by $i=1,2,\ldots,|R|$                                                      \\
+    $K$        & Set of trucks/laborers (one laborer per truck)                                                         \\
+    $N_0$      & Set of all nodes: $N_0 = V \cup R \cup \{0\}$                                                          \\
+    $V\supF$   & Set of functional bike nodes: $V\supF = \bigcup_{r \in R} V_r\supF$                                    \\
+    $V\supB$   & Set of broken bike nodes: $V\supB = \bigcup_{r \in R} V_r\supB$                                        \\
+    $V$        & Set of all bike nodes: $V = V\supF \cup V\supB$                                                        \\
+    $V_r$      & Set of all bike nodes in region $r$: $V_r = V_r\supF \cup V_r\supB$                                    \\
+    $V_r\supF$ & Set of functional bike nodes in region $r \in R$                                                       \\
+    $V_r\supB$ & Set of broken bike nodes in region $r \in R$                                                           \\
+    $A$        & Set of all arcs: $A = A\supT \cup \bigcup_{r \in R} A_r\supL$                                          \\
+    $A\supT$   & Set of truck arcs: $A\supT = \{(i,j) \mid i,j \in \{\kappa_r : r \in R\} \cup \{0\}, i \neq j\}$       \\
+    $A_r\supL$ & Set of laborer arcs in region $r$: $A_r\supL = \{(i,j) \mid i,j \in V_r \cup \{\kappa_r\}, i \neq j\}$ \\
+    \bottomrule
+\end{longtable}
+
+\subsubsection{Parameters}
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{p{2cm}p{8cm}p{2cm}}
+    \toprule
+    Parameter   & Description                                       & Units    \\
+    \midrule
+    \endhead
+    $dis_{i,j}$ & Distance between nodes $i$ and $j$                & km       \\
+    $\kappa_r$  & Center/loading node of region $r \in R$           & node     \\
+    $o_r$       & Target quantity of functional bikes in region $r$ & bikes    \\
+    $Q\supT$    & Truck capacity                                    & bikes    \\
+    $Q\supL$    & Laborer capacity                                  & bikes    \\
+    $v\supT$    & Average truck travel speed                        & km/min   \\
+    $v\supL$    & Average laborer travel speed (off-truck)          & km/min   \\
+    $TC\supT$   & Truck travel cost per unit time                   & \$/min   \\
+    $TC\supL$   & Laborer travel cost per unit time                 & \$/min   \\
+    $LT$        & Loading/unloading time per bike                   & min/bike \\
+    $RT$        & Repair time per bike                              & min/bike \\
+    $w$         & Penalty cost per unit of unmet demand             & \$/bike  \\
+    $T_{\max}$  & Time budget for the entire operation              & min      \\
+    $M$         & Sufficiently large number for subtour elimination & --       \\
+    \bottomrule
+\end{longtable}
+
+\subsubsection{Decision Variables}
+
+\renewcommand{\arraystretch}{1.25}
+\begin{longtable}{p{2cm}p{2cm}p{8cm}}
+    \toprule
+    Variable       & Type       & Description                                                                                     \\
+    \midrule
+    \endhead
+    $x_{i,j,k}$    & Binary     & Equals 1 if truck $k$ travels on arc $(i,j) \in A\supT$; 0 otherwise                            \\
+    $y_{i,j,r,k}$  & Binary     & Equals 1 if laborer of truck $k$ travels on arc $(i,j) \in A_r\supL$ in region $r$; 0 otherwise \\
+    $p_{j,k}$      & Binary     & Equals 1 if bike $j \in V$ is picked up by laborer of truck $k$; 0 otherwise                    \\
+    $s_{j,k}$      & Binary     & Equals 1 if broken bike $j \in V\supB$ is repaired by laborer of truck $k$; 0 otherwise         \\
+    $d_{r,k}$      & Integer    & Number of bikes dropped off by truck $k$ at region $r$                                          \\
+    $c_{i,j}\supT$ & Continuous & Number of bikes carried on truck arc $(i,j) \in A\supT$                                         \\
+    $c_{i,j}\supL$ & Continuous & Number of bikes carried by laborer on arc $(i,j) \in A_r\supL$                                  \\
+    $\gamma_r$     & Continuous & Final inventory of functional bikes in region $r$                                               \\
+    $u_{j,k}\supT$ & Continuous & Auxiliary variable for truck subtour elimination                                                \\
+    $u_{j,k}\supL$ & Continuous & Auxiliary variable for laborer subtour elimination                                              \\
+    \bottomrule
+\end{longtable}
+
+\subsection{Mathematical Formulation}
+
+\begin{linenomath}
+    \begin{equation}
+        \min \quad w\sum_{r \in R} \max(o_r - \gamma_r, 0) + w\left(|V\supB| - \sum_{k \in K}\sum_{j \in V\supB}(s_{j,k} + p_{j,k})\right) \label{eq:objective}
+    \end{equation}
+
+\end{linenomath}
+
+s.t.
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{k \in K}\sum_{i \in \{\kappa_s : s \in R\} \cup \{0\}, i \neq j} x_{i,j,k} \leq 1, \quad \forall j \in \{\kappa_r : r \in R\} \label{eq:regional_visit}
+    \end{equation}
+
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{i \in R \cup \{0\}, i \neq j} x_{i,j,k} = \sum_{i \in R \cup \{0\}, i \neq j} x_{j,i,k}, \quad \forall k \in K \label{eq:truck_flow}
+    \end{equation}
+
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{j \in R} x_{0,j,k} = \sum_{j \in R} x_{j,0,k} = 1, \quad \forall k \in K \label{eq:depot_flow}
+    \end{equation}
+
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        c_{0,r}\supT = c_{r,0}\supT = 0, \quad \forall r \in R \label{eq:depot_inventory}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{i \in R \cup \{\kappa_r\}, i \neq r} c_{r,i}\supT - \sum_{i \in R \cup \{\kappa_r\}, i \neq r} c_{i,r}\supT = \sum_{i \in V_r} c_{i,\kappa_r}\supL - \sum_{k \in K} d_{r,k}, \quad \forall r \in R \label{eq:truck_inventory}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        c_{i,j}\supT \leq Q\supT \sum_{k \in K} x_{i,j,k}, \quad \forall (i,j) \in A\supT \label{eq:truck_capacity}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{k \in K}\sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{i,j,r,k} \leq 1, \quad \forall j \in V_r, r \in R \label{eq:bike_visit}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{i,j,r,k} = \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{j,i,r,k}, \quad \forall j \in V_r, r \in R, k \in K \label{eq:laborer_flow}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{j \in V_r} y_{\kappa_r,j,k} = \sum_{j \in V_r} y_{j,\kappa_r,k} = 1, \quad \forall r \in R, k \in K \label{eq:laborer_tour}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        p_{j,k} \leq \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{i,j,r,k}, \quad \forall j \in V_r, r \in R, k \in K \label{eq:pickup_visit}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        s_{j,k} \leq \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{i,j,r,k}, \quad \forall j \in V_r\supB, r \in R, k \in K \label{eq:repair_visit}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        p_{j,k} + s_{j,k} \geq \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} y_{i,j,r,k}, \quad \forall j \in V_r, r \in R, k \in K \label{eq:visit_action}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        s_{j,k} = 0, \quad \forall j \in V\supF, k \in K \label{eq:functional_no_repair}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        p_{j,k} + s_{j,k} \leq 1, \quad \forall j \in V\supB, k \in K \label{eq:exclusive_operations}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{j \in V\supF} p_{j,k} = \sum_{r \in R} d_{r,k}, \quad \forall k \in K \label{eq:functional_balance}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        c_{\kappa_r,j}\supL = 0, \quad \forall r \in R, j \in V_r \label{eq:laborer_initial}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} c_{j,i}\supL - \sum_{i \in V_r \cup \{\kappa_r\}, i \neq j} c_{i,j}\supL = \sum_{k \in K} p_{j,k}, \quad \forall j \in V_r, r \in R \label{eq:laborer_inventory}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        c_{i,j}\supL \leq Q\supL \sum_{k \in K} y_{i,j,r,k}, \quad \forall (i,j) \in A_r\supL, r \in R \label{eq:laborer_capacity}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        y_{\kappa_r,j,r,k} \leq \sum_{i \in \{\kappa_s : s \in R\} \cup \{0\}, i \neq \kappa_r} x_{i,\kappa_r,k}, \quad \forall j \in V_r, r \in R, k \in K \label{eq:coordination}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        \gamma_r = |V_r\supF| - \sum_{k \in K}\sum_{j \in V_r\supF} p_{j,k} + \sum_{k \in K}\sum_{j \in V_r\supB} s_{j,k} + \sum_{k \in K} d_{r,k}, \quad \forall r \in R \label{eq:regional_inventory}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{align}
+        \sum_{k \in K}\sum_{(i,j) \in A\supT} \frac{dis_{i,j}}{v\supT} x_{i,j,k} + \sum_{k \in K}\sum_{r \in R}\sum_{(i,j) \in A_r\supL} \frac{dis_{i,j}}{v\supL} y_{i,j,r,k} \nonumber \\
+        + LT\sum_{k \in K}\left(\sum_{r \in R}d_{r,k} + \sum_{j \in V}p_{j,k}\right) + RT\sum_{k \in K}\sum_{j \in V\supB}s_{j,k} \leq T_{\max} \label{eq:time_budget}
+    \end{align}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        u_{j,k}\supT \geq u_{i,k}\supT + 1 - |\{\kappa_r : r \in R\}|(1 - x_{i,j,k}), \quad \forall i \in \{\kappa_s : s \in R\} \cup \{0\}, j \in \{\kappa_r : r \in R\}, k \in K \label{eq:truck_subtour}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        u_{j,k}\supL \geq u_{i,k}\supL + 1 - |V_r|(1 - y_{i,j,r,k}), \quad \forall i \in V_r \cup \{\kappa_r\}, j \in V_r, i \neq j, r \in R, k \in K \label{eq:laborer_subtour}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        0 \leq u_{j,k}\supT \leq M, \quad \forall j \in \{\kappa_r : r \in R\} \cup \{0\}, k \in K \label{eq:truck_aux_bounds}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        0 \leq u_{j,k}\supL \leq M, \quad \forall j \in V_r \cup \{\kappa_r\}, r \in R, k \in K \label{eq:laborer_aux_bounds}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        x_{i,j,k} \in \{0,1\}, \quad y_{i,j,r,k} \in \{0,1\}, \quad p_{j,k} \in \{0,1\}, \quad s_{j,k} \in \{0,1\} \label{eq:binary_vars}
+    \end{equation}
+\end{linenomath}
+
+\begin{linenomath}
+    \begin{equation}
+        d_{r,k} \geq 0 \text{ and integer}, \quad c_{i,j}\supT \geq 0, \quad c_{i,j}\supL \geq 0, \quad \gamma_r \geq 0 \label{eq:variable_domains}
+    \end{equation}
+\end{linenomath}
+
+The objective function \eqref{eq:objective} minimizes the total system cost, which consists of two penalty components: the unmet demand penalty for regions that fall short of their target functional bike quantities, and the penalty for broken bikes that are neither picked up nor repaired.
+
+The constraints can be categorized into several groups. Truck routing constraints \eqref{eq:regional_visit}--\eqref{eq:truck_capacity} ensure proper truck movement between regions and the depot. Constraint \eqref{eq:regional_visit} limits each region to be visited by at most one truck, while \eqref{eq:truck_flow} maintains flow conservation for trucks. Constraint \eqref{eq:depot_flow} ensures each truck departs from and returns to the depot exactly once, and \eqref{eq:depot_inventory} requires trucks to leave and return to the depot empty. Constraint \eqref{eq:truck_inventory} balances truck inventory at regional transfer points, and \eqref{eq:truck_capacity} enforces truck capacity limits.
+
+Laborer routing constraints \eqref{eq:bike_visit}--\eqref{eq:laborer_tour} manage laborer movement within regions. Constraint \eqref{eq:bike_visit} ensures each bike is visited by at most one laborer, \eqref{eq:laborer_flow} maintains flow conservation for laborers at bike nodes, and \eqref{eq:laborer_tour} requires laborers to start and end their tours at regional loading points.
+
+Pickup and repair operation constraints \eqref{eq:pickup_visit}--\eqref{eq:exclusive_operations} link operational decisions with routing decisions. Constraints \eqref{eq:pickup_visit} and \eqref{eq:repair_visit} ensure that pickup and repair operations can only occur if the corresponding bike is visited. Constraint \eqref{eq:visit_action} requires that if a bike is visited, at least one operation must be performed. Constraint \eqref{eq:functional_no_repair} prohibits repair of functional bikes, while \eqref{eq:exclusive_operations} ensures broken bikes cannot be both picked up and repaired by the same laborer.
+
+Inventory and flow balance constraints \eqref{eq:functional_balance}--\eqref{eq:regional_inventory} track bike movements through the system. Constraint \eqref{eq:functional_balance} ensures conservation of functional bikes picked up and dropped off by each truck-laborer team. Constraints \eqref{eq:laborer_initial} and \eqref{eq:laborer_inventory} manage laborer inventory, with \eqref{eq:laborer_initial} setting initial conditions and \eqref{eq:laborer_inventory} tracking inventory changes during laborer routes. Constraint \eqref{eq:regional_inventory} calculates the final functional bike inventory in each region.
+
+Capacity and coordination constraints \eqref{eq:laborer_capacity}--\eqref{eq:time_budget} ensure operational feasibility. Constraint \eqref{eq:laborer_capacity} enforces laborer capacity limits, \eqref{eq:coordination} ensures laborers can only operate in regions visited by their associated trucks, and \eqref{eq:time_budget} enforces the overall time budget for the entire operation.
+
+\sloppy Subtour elimination constraints \eqref{eq:truck_subtour}--\eqref{eq:laborer_subtour} prevent disconnected subtours using Miller-Tucker-Zemlin \cite{miller1960subtour} constraints, ensuring connected tours for both trucks and laborers.
+
+Finally, variable domain constraints \eqref{eq:truck_aux_bounds}--\eqref{eq:variable_domains} define the appropriate domains for all decision variables, including bounds for auxiliary variables \eqref{eq:truck_aux_bounds}--\eqref{eq:laborer_aux_bounds}, binary variable definitions \eqref{eq:binary_vars}, and non-negativity and integrality requirements \eqref{eq:variable_domains}.

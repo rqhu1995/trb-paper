@@ -1,0 +1,12 @@
+\section{To Do's}
+Two document types, extending from the \verb1[numbered]1 option, can be defined to differentiate the initial submission (i.e., with line numbers and in-line figures and tables) and the final manuscript (i.e., without line numbers and all figures and tables are attached to the end).
+
+\section{Conclusion}
+To make the document from source in a Unix-like OS, issue the following commands:
+\begin{verbatim}
+    latexmk trb_template.tex -pdf -pvc -shell-escape
+\end{verbatim}
+
+The \verb1--shell-escape1 option is required to access the command line for the word count. Normally this feature is disabled because it is a route of entry for malicious software. We promise that there is no such debilitating code in this document, and we encourage you to examine any scripts for suspicious code before permitting \verb1pdflatex1 from accessing your system.
+
+Perl is necessary for ``texcount`` to work and needs a Perl interpreter e.g. [ActivePerl](http://www.activestate.com/activeperl/downloads).
