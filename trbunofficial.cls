@@ -32,13 +32,17 @@
 
 % Specific macros for common terms
 \newcommand{\T}{\text{T}}     % Truck
+\newcommand{\Tm}{\text{T},m}   % Truck with m
 \newcommand{\Lab}{\text{L}}   % Laborer
+\newcommand{\Labm}{\text{L},m} % Laborer with m
 \newcommand{\F}{\text{F}}     % Functional
 \newcommand{\B}{\text{B}}     % Broken
 
 % Combined sub/superscript macros
 \newcommand{\supT}{^{\T}}
+\newcommand{\supTM}{^{\Tm}}
 \newcommand{\supL}{^{\Lab}}
+\newcommand{\supLM}{^{\Labm}}
 \newcommand{\supF}{^{\F}}
 \newcommand{\supB}{^{\B}}
 \newcommand{\subT}{_{\T}}

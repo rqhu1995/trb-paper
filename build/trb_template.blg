@@ -4,46 +4,44 @@ The top-level auxiliary file: trb_template.aux
 The style file: trb.bst
 Database file #1: trb_template.bib
 Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
-Warning--missing institution in TRBGuide
-You've used 2 entries,
+You've used 1 entry,
             3147 wiz_defined-function locations,
-            618 strings with 4388 characters,
-and the built_in function-call counts, 1032 in all, are:
-= -- 83
-> -- 32
-< -- 4
-+ -- 12
-- -- 8
-* -- 78
-:= -- 157
-add.period$ -- 4
-call.type$ -- 2
-change.case$ -- 8
-chr.to.int$ -- 2
-cite$ -- 3
-duplicate$ -- 87
-empty$ -- 74
-format.name$ -- 12
-if$ -- 205
+            611 strings with 4164 characters,
+and the built_in function-call counts, 697 in all, are:
+= -- 56
+> -- 24
+< -- 3
++ -- 8
+- -- 6
+* -- 56
+:= -- 98
+add.period$ -- 2
+call.type$ -- 1
+change.case$ -- 4
+chr.to.int$ -- 1
+cite$ -- 1
+duplicate$ -- 58
+empty$ -- 48
+format.name$ -- 9
+if$ -- 142
 int.to.chr$ -- 1
-int.to.str$ -- 3
-missing$ -- 15
-newline$ -- 10
-num.names$ -- 6
-pop$ -- 25
+int.to.str$ -- 2
+missing$ -- 10
+newline$ -- 7
+num.names$ -- 3
+pop$ -- 15
 preamble$ -- 1
-purify$ -- 10
+purify$ -- 5
 quote$ -- 0
-skip$ -- 33
+skip$ -- 24
 stack$ -- 0
-substring$ -- 56
-swap$ -- 53
+substring$ -- 44
+swap$ -- 39
 text.length$ -- 3
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 12
-warning$ -- 1
-while$ -- 7
+type$ -- 6
+warning$ -- 0
+while$ -- 5
 width$ -- 0
-write$ -- 25
-(There was 1 warning)
+write$ -- 15

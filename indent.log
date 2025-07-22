@@ -1,11 +1,11 @@
 INFO:  latexindent version 3.15, 2022-01-21, a script to indent .tex files
        latexindent lives here: /usr/share/texlive/texmf-dist/scripts/latexindent/
-       Mon Jul 21 23:46:33 2025
-       Filename: /home/runqiu/trb/paper/sections/formulation/__latexindent_temp_formulation.tex
+       Tue Jul 22 23:39:31 2025
+       Filename: /home/runqiu/trb/trb-paper/sections/formulation/__latexindent_temp_formulation.tex
 INFO:  Processing switches:
        -y|--yaml: YAML settings specified via command line
        -c|--cruft: cruft directory
-INFO:  Directory for backup files and /home/runqiu/trb/paper//indent.log: /home/runqiu/trb/paper/
+INFO:  Directory for backup files and /home/runqiu/trb/trb-paper//indent.log: /home/runqiu/trb/trb-paper/
 INFO:  YAML settings read: defaultSettings.yaml
        Reading defaultSettings.yaml from /usr/share/texlive/texmf-dist/scripts/latexindent/defaultSettings.yaml
 INFO:  YAML settings read: indentconfig.yaml or .indentconfig.yaml
